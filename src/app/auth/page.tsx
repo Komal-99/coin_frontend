@@ -4,13 +4,25 @@ import Link from "next/link"
 
 import { cn } from "@/lib/utils"
 import { UserAuthForm } from "@/components/user-auth-form"
+import { auth } from "@/auth"
+import { redirect } from "next/navigation"
 
 export const metadata: Metadata = {
     title: "Authentication",
     description: "Authentication forms built using the components.",
 }
 
-export default function AuthenticationPage() {
+export default async function AuthenticationPage() {
+    const session = await auth();
+   
+    if (session) {
+        console.log("session", session)
+        // redirect("/");
+    }
+
+   
+
+
     return (
         <div className="">
             <div className="md:hidden min-h-screen" >
@@ -45,14 +57,7 @@ export default function AuthenticationPage() {
                 </div>
                 <div className="lg:p-8">
                     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-                        <div className="flex flex-col space-y-2 text-center">
-                            <h1 className="text-2xl font-semibold tracking-tight">
-                                Create an account / Sign In
-                            </h1>
-                            <p className="text-sm text-muted-foreground">
-                                Enter your email below to create your account
-                            </p>
-                        </div>
+                       
                         <UserAuthForm />
                         <p className="px-8 text-center text-sm text-muted-foreground">
                             By clicking continue, you agree to our{" "}
