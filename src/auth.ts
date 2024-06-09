@@ -1,64 +1,96 @@
-import NextAuth from "next-auth"
-import Credentials from "next-auth/providers/credentials"
+import NextAuth, { DefaultSession } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 // Your own logic for dealing with plaintext password strings; be careful!
-import { ZodError } from "zod"
-import axios from "axios"
-import { signInSchema } from "@/lib/zod"
+import GoogleProvider from "next-auth/providers/google";
+import { ZodError } from "zod";
+import axios from "axios";
+import { signInSchema } from "@/lib/zod";
+import { redirect } from "next/navigation";
 
+const endpoint = "http://localhost:4000/graphql";
+const headers = {
+  "content-type": "application/json",
+  Authorization: "<token>",
+};
+
+declare module "next-auth" {
+  /**
+   * Returned by `auth`, `useSession`, `getSession` and received as a prop on the `SessionProvider` React Context
+   */
+  interface Session {
+    user: {
+      /** The user's postal address. */
+      id: string;
+      /**
+       * By default, TypeScript merges new interface properties and overwrites existing ones.
+       * In this case, the default session user properties will be overwritten,
+       * with the new ones defined above. To keep the default session user properties,
+       * you need to add them back into the newly declared interface.
+       */
+    } & DefaultSession["user"];
+  }
+}
+
+async function fetchUserByEmail(email: string, graphqlQuery: string) {
+  try {
+    const response = await axios({
+      url: endpoint,
+      method: "post",
+      headers: headers,
+      data: graphqlQuery,
+    });
+    const userId = response.data.data.userByEmail.id;
+    console.log(response.data.data);
+    return userId;
+  } catch (error) {
+    console.error(error);
+  }
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-    providers: [
-        Credentials({
-            // You can specify which fields should be submitted, by adding keys to the `credentials` object.
-            // e.g. domain, username, password, 2FA token, etc.
-            credentials: {
-                email: {},
-                password: {},
-            },
-            authorize: async (credentials) => {
-                console.log("here")
-                try {
-                    let user = null
-                    const { email, password } = await signInSchema.parseAsync(credentials)
-                    console.log(email)
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
+  ],
+  secret: process.env.SECRET,
+  trustHost: true,
 
-                    // logic to salt and hash password
+  callbacks: {
+    // redirect to dashboard on successful signin
 
-                    // logic to verify if user exists
-                    const checkUser = await axios.post("http://localhost:4000/api/user", {
-                        // graphql query to check if user exists
-                        query: `
-                          query {
-                            user(email: "${email}", password: "${password}") {
-                              id
-                              email
-                              username
-                              password
-                            }
-                          }
-                        `,
-                    })
-
-                    if (checkUser.data.errors) {
-                        throw new Error("User not found.")
-                    }
-
-                    user = checkUser.data.data.user;
-                    console.log(user)
-
-                    if (!user) {
-                        throw new Error("User not found.")
-                    }
-
-                    // return json object with the user data
-                    return user
-                } catch (error) {
-                    if (error instanceof ZodError) {
-                        // Return `null` to indicate that the credentials are invalid
-                        return null
-                    }
+    async signIn({ user, account }: { user: any; account: any }) {
+      if (account && user) {
+        if (account.provider === "google" || account.provider === "github") {
+          const { email, name } = user;
+          const graphqlQuery = {
+            operationName: "userByEmail",
+            query: `
+              query userByEmail($email: String!) {
+                userByEmail(email: $email) {
+                  id
+                  email
                 }
+              }
+            `,
+            variables: {
+              email: email,
             },
-        }),
-    ],
-})
+          };
+          const id = await fetchUserByEmail(
+            email,
+            JSON.stringify(graphqlQuery)
+          );
+          console.log(id);
+          if(id){
+            user.id = id;
+          }
+
+          return true;
+        }
+      }
+      return false;
+    },
+  },
+});
